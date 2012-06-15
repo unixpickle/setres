@@ -1,0 +1,7 @@
+//
+// Prefix header for all source files of the 'setres' target in the 'setres' project
+//
+
+#ifdef __OBJC__
+    #import <Foundation/Foundation.h>
+#endif
