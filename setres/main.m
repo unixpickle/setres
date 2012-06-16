@@ -10,7 +10,7 @@
 
 void listAllModes();
 CFDictionaryRef CGDisplayModeGetDictionary(CGDisplayModeRef mode);
-CGDisplayModeRef findDisplayMode(CGFloat width, CGFloat height, CGFloat scale, CGDirectDisplayID display);
+CGDisplayModeRef findDisplayMode(CGFloat width, CGFloat height, CGFloat scale, int bitsPerPixel, CGDirectDisplayID display);
 
 int main(int argc, const char * argv[]) {
     @autoreleasepool {
@@ -22,20 +22,24 @@ int main(int argc, const char * argv[]) {
         }
         
         if (argc < 3) {
-            fprintf(stderr, "usage: %s [--modes] <width> <height> [scale]\n", argv[0]);
+            fprintf(stderr, "usage: %s [--modes] <width> <height> [scale [bitsPerPixel]]\n", argv[0]);
             return 1;
         }
         
         CGFloat width = atof(argv[1]);
         CGFloat height = atof(argv[2]);
         CGFloat scale = 1;
+        int bitsRes = 0;
         
         if (argc > 3) {
             scale = atof(argv[3]);
         }
+        if (argc > 4) {
+            bitsRes = atoi(argv[4]);
+        }
                 
         CGDirectDisplayID display = CGMainDisplayID();       
-        CGDisplayModeRef mode = findDisplayMode(width, height, scale, display);
+        CGDisplayModeRef mode = findDisplayMode(width, height, scale, bitsRes, display);
         if (!mode) {
             printf("error: no display mode was found...\n");
             return 1;
@@ -59,10 +63,13 @@ void listAllModes() {
         CGDisplayModeRef mode = (CGDisplayModeRef)CFArrayGetValueAtIndex(modes, i);        
         CFDictionaryRef infoDict = CGDisplayModeGetDictionary(mode);
         CFNumberRef resolution = CFDictionaryGetValue(infoDict, CFSTR("kCGDisplayResolution"));
+        CFNumberRef bits = CFDictionaryGetValue(infoDict, CFSTR("BitsPerPixel"));
         float value;
+        int bitsValue;
         CFNumberGetValue(resolution, kCFNumberFloatType, &value);
-        printf("mode: {resolution=%dx%d, scale = %.1f}\n", (int)CGDisplayModeGetWidth(mode),
-               (int)CGDisplayModeGetHeight(mode), value);
+        CFNumberGetValue(bits, kCFNumberIntType, &bitsValue);
+        printf("mode: {resolution=%dx%d, scale = %.1f, bits/pixel = %d}\n", (int)CGDisplayModeGetWidth(mode),
+               (int)CGDisplayModeGetHeight(mode), value, bitsValue);
     }
     CFRelease(modes);
 
@@ -73,22 +80,32 @@ CFDictionaryRef CGDisplayModeGetDictionary(CGDisplayModeRef mode) {
     return infoDict;
 }
 
-CGDisplayModeRef findDisplayMode(CGFloat width, CGFloat height, CGFloat scale, CGDirectDisplayID display) {
+CGDisplayModeRef findDisplayMode(CGFloat width, CGFloat height, CGFloat scale, int bitsPerPixel, CGDirectDisplayID display) {
     CFArrayRef modes = CGDisplayCopyAllDisplayModes(display, NULL);
+    
+    CGDisplayModeRef desiredMode = NULL;
+    int desiredQuality = 0;
+    
     for (int i = 0; i < CFArrayGetCount(modes); i++) {
         CGDisplayModeRef mode = (CGDisplayModeRef)CFArrayGetValueAtIndex(modes, i);        
         if (CGDisplayModeGetWidth(mode) == width && CGDisplayModeGetHeight(mode) == height) {
             CFDictionaryRef infoDict = CGDisplayModeGetDictionary(mode);
             CFNumberRef resolution = CFDictionaryGetValue(infoDict, CFSTR("kCGDisplayResolution"));
-            float value;
-            CFNumberGetValue(resolution, kCFNumberFloatType, &value);
-            if (value == scale) {
-                CGDisplayModeRetain(mode);
-                CFRelease(modes);
-                return mode;
+            CFNumberRef bits = CFDictionaryGetValue(infoDict, CFSTR("BitsPerPixel"));
+            float resolutienValue;
+            int bitsValue;
+            CFNumberGetValue(bits, kCFNumberIntType, &bitsValue);
+            CFNumberGetValue(resolution, kCFNumberFloatType, &resolutienValue);
+            if (bitsPerPixel && bitsPerPixel == bitsValue) {
+                desiredMode = mode;
+            } else if (resolutienValue == scale && bitsValue > desiredQuality) {
+                desiredMode = mode;
+                desiredQuality = bitsValue;
             }
         }
     }
+    
+    if (desiredMode) CGDisplayModeRetain(desiredMode);
     CFRelease(modes);
-    return NULL;
+    return desiredMode;
 }
